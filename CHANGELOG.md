@@ -1,10 +1,16 @@
 # Changelog
 
+## 1.1.4
+
+- **Fix:** Resolved Swift-to-Objective-C bridging header import paths for iOS (`ar_flutter_plugin_flash-Swift.h`) to fix Xcode build failures.
+
 ## 1.1.3
 
+- **New Feature:** Added native Flashlight / Torch support (`toggleFlashlight`) for both ARCore (Android) and ARKit (iOS) without interrupting the active AR tracking session.
+- **Update:** Renamed package and repository to `ar_flutter_plugin_flash`.
 - additional scaling options
 - additional lighting options
-- pre-chaching of trackable images
+- pre-caching of trackable images
 
 ## 1.1.2
 
