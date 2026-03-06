@@ -1,20 +1,20 @@
-import 'package:ar_flutter_plugin_plus_example/examples/externalmodelmanagementexample.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/image_marker_tracking.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/objectgesturesexample.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/objectsonplanesexample.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/screenshotexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/externalmodelmanagementexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/image_marker_tracking.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/objectgesturesexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/objectsonplanesexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/screenshotexample.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
-import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin_plus/managers/ar_anchor_manager.dart';
-import 'package:ar_flutter_plugin_plus/managers/ar_location_manager.dart';
-import 'package:ar_flutter_plugin_plus/managers/ar_object_manager.dart';
-import 'package:ar_flutter_plugin_plus/managers/ar_session_manager.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/cloudanchorexample.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/localandwebobjectsexample.dart';
-import 'package:ar_flutter_plugin_plus_example/examples/debugoptionsexample.dart';
+import 'package:ar_flutter_plugin_flash/ar_flutter_plugin_flash.dart';
+import 'package:ar_flutter_plugin_flash/datatypes/config_planedetection.dart';
+import 'package:ar_flutter_plugin_flash/managers/ar_anchor_manager.dart';
+import 'package:ar_flutter_plugin_flash/managers/ar_location_manager.dart';
+import 'package:ar_flutter_plugin_flash/managers/ar_object_manager.dart';
+import 'package:ar_flutter_plugin_flash/managers/ar_session_manager.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/cloudanchorexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/localandwebobjectsexample.dart';
+import 'package:ar_flutter_plugin_flash_example/examples/debugoptionsexample.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

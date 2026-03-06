@@ -1,5 +1,5 @@
-import 'package:ar_flutter_plugin_plus/datatypes/anchor_types.dart';
-import 'package:ar_flutter_plugin_plus/utils/json_converters.dart';
+import 'package:ar_flutter_plugin_flash/datatypes/anchor_types.dart';
+import 'package:ar_flutter_plugin_flash/utils/json_converters.dart';
 import 'package:flutter/widgets.dart';
 
 /// Object attached to a tracked physical entity of the AR environment (can be initialized with a world transformation)

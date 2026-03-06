@@ -1,8 +1,8 @@
 import 'dart:math' show sqrt;
-import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin_plus/models/ar_anchor.dart';
-import 'package:ar_flutter_plugin_plus/models/ar_hittest_result.dart';
-import 'package:ar_flutter_plugin_plus/utils/json_converters.dart';
+import 'package:ar_flutter_plugin_flash/datatypes/config_planedetection.dart';
+import 'package:ar_flutter_plugin_flash/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin_flash/models/ar_hittest_result.dart';
+import 'package:ar_flutter_plugin_flash/utils/json_converters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart';
@@ -53,7 +53,7 @@ class ARSessionManager {
   Future<Matrix4?> getCameraPose() async {
     try {
       final serializedCameraPose =
-          await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
+      await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
       return MatrixConverter().fromJson(serializedCameraPose!);
     } catch (e) {
       print('Error caught: ' + e.toString());
@@ -68,7 +68,7 @@ class ARSessionManager {
         throw Exception("Anchor can not be resolved. Anchor name is empty.");
       }
       final serializedCameraPose =
-          await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
+      await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
         "anchorId": anchor.name,
       });
       return MatrixConverter().fromJson(serializedCameraPose!);
@@ -260,6 +260,23 @@ class ARSessionManager {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // NEW: NATIVE AR FLASHLIGHT TOGGLE
+  // ---------------------------------------------------------------------------
+  /// Toggles the native device flashlight (Torch) inside the AR Session.
+  /// Returns true if successful, false if unsupported or failed.
+  Future<bool> toggleFlashlight({required bool state}) async {
+    try {
+      final bool? success = await _channel.invokeMethod<bool>('toggleFlashlight', {
+        'state': state,
+      });
+      return success ?? false;
+    } catch (e) {
+      print('Error caught toggling AR flashlight: ' + e.toString());
+      return false;
+    }
+  }
+
   /// Displays the [errorMessage] in a snackbar of the parent widget
   onError(String errorMessage) {
     ScaffoldMessenger.of(buildContext).showSnackBar(SnackBar(
@@ -267,7 +284,7 @@ class ARSessionManager {
         action: SnackBarAction(
             label: 'HIDE',
             onPressed:
-                ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
+            ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
   }
 
   /// Dispose the AR view on the platforms to pause the scenes and disconnect the platform handlers.

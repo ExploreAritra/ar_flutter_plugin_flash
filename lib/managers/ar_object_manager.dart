@@ -1,6 +1,6 @@
-import 'package:ar_flutter_plugin_plus/models/ar_anchor.dart';
-import 'package:ar_flutter_plugin_plus/models/ar_node.dart';
-import 'package:ar_flutter_plugin_plus/utils/json_converters.dart';
+import 'package:ar_flutter_plugin_flash/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin_flash/models/ar_node.dart';
+import 'package:ar_flutter_plugin_flash/utils/json_converters.dart';
 import 'package:flutter/services.dart';
 
 // Type definitions to enforce a consistent use of the API

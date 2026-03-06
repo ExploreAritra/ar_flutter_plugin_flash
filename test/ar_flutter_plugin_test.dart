@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
+import 'package:ar_flutter_plugin_flash/ar_flutter_plugin_flash.dart';
 
 void main() {
   const MethodChannel channel = MethodChannel('ar_flutter_plugin_plus');

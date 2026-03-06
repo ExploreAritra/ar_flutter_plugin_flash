@@ -1,18 +1,19 @@
-# ar_flutter_plugin_plus
+# ar_flutter_plugin_flash
 
-[![pub package](https://img.shields.io/pub/v/ar_flutter_plugin_plus.svg)](https://pub.dev/packages/ar_flutter_plugin_plus)
+[![pub package](https://img.shields.io/pub/v/ar_flutter_plugin_flash.svg)](https://pub.dev/packages/ar_flutter_plugin_flash)
 
 !!!
-There is currently a bug in the ARCore library on Android which interfers with the tracking functionality on some devices.
-To achieve a smooth tracking the app must be build with "debuggable false" in build.gradle. More about it in this github issue: https://github.com/google-ar/arcore-android-sdk/issues/1750
+There is currently a bug in the ARCore library on Android which interferes with the tracking functionality on some devices.
+To achieve a smooth tracking the app must be built with "debuggable false" in build.gradle. More about it in this github issue: https://github.com/google-ar/arcore-android-sdk/issues/1750
 !!!
-
-First of all, a big thank you to Lars Carius, who developed the original ar_flutter_plugin (https://pub.dev/packages/ar_flutter_plugin).
-This plugin is based on his great plugin with extended features.
 
 Flutter Plugin for (collaborative) Augmented Reality - Supports ARKit for iOS and ARCore for Android devices.
 
-Many thanks to Oleksandr Leuschenko for the [arkit_flutter_plugin](https://github.com/olexale/arkit_flutter_plugin) and to Gian Marco Di Francesco for the [arcore_flutter_plugin](https://github.com/giandifra/arcore_flutter_plugin) which both served as a great basis and starting point for this project.
+**✨ What's new in this version (`ar_flutter_plugin_flash`)?**
+This package adds **native Flashlight / Torch support** directly into the AR Session. Standard Flutter flashlight plugins crash with a `CAMERA_IN_USE` error when AR is active because ARCore/ARKit take exclusive low-level hardware locks on the camera. This plugin solves that by routing the flashlight command directly through the native AR frameworks!
+
+### Acknowledgements
+This plugin is an extended fork of the excellent [ar_flutter_plugin_plus](https://pub.dev/packages/ar_flutter_plugin_plus) by Franz Graaf, which itself was based on the original [ar_flutter_plugin](https://pub.dev/packages/ar_flutter_plugin) by Lars Carius. Many thanks to Oleksandr Leuschenko for the [arkit_flutter_plugin](https://github.com/olexale/arkit_flutter_plugin) and to Gian Marco Di Francesco for the [arcore_flutter_plugin](https://github.com/giandifra/arcore_flutter_plugin) which both served as a great basis and starting point for this project.
 
 ## Getting Started
 
@@ -38,7 +39,7 @@ dependencies:
 Add this to your code:
 
 ```dart
-import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
+import 'package:ar_flutter_plugin_flash/ar_flutter_plugin_flash.dart';
 ```
 
 If you have problems with permissions on iOS (e.g. with the camera view not showing up even though camera access is allowed), add this to the `podfile` of your app's `ios` directory:

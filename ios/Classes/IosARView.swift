@@ -4,6 +4,7 @@ import Foundation
 import ARKit
 import Combine
 import ARCoreCloudAnchors
+import AVFoundation // Required for Flashlight/Torch access
 
 class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureRecognizerDelegate, ARSessionDelegate {
     let sceneView: ARSCNView
@@ -15,10 +16,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     var customPlaneTexturePath: String? = nil
     private var trackedPlanes = [UUID: (SCNNode, SCNNode)]()
     let modelBuilder = ArModelBuilder()
-    
+
     var cancellableCollection = Set<AnyCancellable>() //Used to store all cancellables in (needed for working with Futures)
     var anchorCollection = [String: ARAnchor]() //Used to bookkeep all anchors created by Flutter calls
-    
+
     private var cloudAnchorHandler: CloudAnchorHandler? = nil
     private var arcoreSession: GARSession? = nil
     private var arcoreMode: Bool = false
@@ -30,7 +31,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     private var imageTrackingUpdateInterval: TimeInterval = 0.1
     private var autoHideCoachingOverlay: Bool = true
     private var coachingOverlayDismissed: Bool = false
-    
+
     private var panStartLocation: CGPoint?
     private var panCurrentLocation: CGPoint?
     private var panCurrentVelocity: CGPoint?
@@ -52,11 +53,11 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     ) {
         self.sceneView = ARSCNView(frame: frame)
         self.coachingView = ARCoachingOverlayView(frame: frame)
-        
+
         // Enable automatic lighting for better model visibility
         self.sceneView.autoenablesDefaultLighting = true
         self.sceneView.automaticallyUpdatesLighting = true
-        
+
         self.sessionManagerChannel = FlutterMethodChannel(name: "arsession_\(viewId)", binaryMessenger: messenger)
         self.objectManagerChannel = FlutterMethodChannel(name: "arobjects_\(viewId)", binaryMessenger: messenger)
         self.anchorManagerChannel = FlutterMethodChannel(name: "aranchors_\(viewId)", binaryMessenger: messenger)
@@ -102,6 +103,26 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 //self.sessionManagerChannel.invokeMethod("onError", arguments: ["SessionTEST from iOS"])
                 //result(nil)
                 initializeARView(arguments: arguments!, result: result)
+                break
+            case "toggleFlashlight":
+                guard let state = arguments?["state"] as? Bool else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "State boolean is required", details: nil))
+                    return
+                }
+
+                guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else {
+                    result(FlutterError(code: "UNSUPPORTED", message: "Device does not have a flashlight", details: nil))
+                    return
+                }
+
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = state ? .on : .off
+                    device.unlockForConfiguration()
+                    result(true)
+                } catch {
+                    result(FlutterError(code: "TORCH_LOCK_FAILED", message: "Could not lock the camera to toggle torch", details: nil))
+                }
                 break
             case "getCameraPose":
                 if let cameraPose = sceneView.session.currentFrame?.camera.transform {
@@ -157,7 +178,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
     func onObjectMethodCalled(_ call :FlutterMethodCall, _ result: @escaping FlutterResult) {
         let arguments = call.arguments as? Dictionary<String, Any>
-          
+
         switch call.method {
             case "init":
                 if let iosScaleFactor = arguments?["iosScaleFactor"] as? NSNumber {
@@ -196,7 +217,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
     func onAnchorMethodCalled(_ call :FlutterMethodCall, _ result: @escaping FlutterResult) {
         let arguments = call.arguments as? Dictionary<String, Any>
-          
+
         switch call.method {
             case "init":
                 self.objectManagerChannel.invokeMethod("onError", arguments: ["ObjectTEST from iOS"])
@@ -214,7 +235,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                         break
                     default:
                         result(false)
-                    
+
                     }
                 }
                 result(nil)
@@ -233,11 +254,11 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                     arcoreSession?.setConfiguration(configuration, error: nil);
                     if let token = JWTGenerator().generateWebToken(){
                         arcoreSession!.setAuthToken(token)
-                        
+
                         cloudAnchorHandler = CloudAnchorHandler(session: arcoreSession!)
                         arcoreSession!.delegate = cloudAnchorHandler
                         arcoreSession!.delegateQueue = DispatchQueue.main
-                        
+
                         arcoreMode = true
                     } else {
                         sessionManagerChannel.invokeMethod("onError", arguments: ["Error generating JWT, have you added cloudAnchorKey.json into the example/ios/Runner directory?"])
@@ -245,7 +266,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 } else {
                     sessionManagerChannel.invokeMethod("onError", arguments: ["Error initializing Google AR Session"])
                 }
-                    
+
                 break
             case "uploadAnchor":
                 if let anchorName = arguments!["name"] as? String, let anchor = anchorCollection[anchorName] {
@@ -276,18 +297,18 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         self.configuration.environmentTexturing = .automatic
         if let planeDetectionConfig = arguments["planeDetectionConfig"] as? Int {
             switch planeDetectionConfig {
-                case 1: 
+                case 1:
                     configuration.planeDetection = .horizontal
-                
-                case 2: 
+
+                case 2:
                     if #available(iOS 11.3, *) {
                         configuration.planeDetection = .vertical
                     }
-                case 3: 
+                case 3:
                     if #available(iOS 11.3, *) {
                         configuration.planeDetection = [.horizontal, .vertical]
                     }
-                default: 
+                default:
                     configuration.planeDetection = []
             }
         }
@@ -324,7 +345,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
         self.sceneView.debugOptions = ARSCNDebugOptions(rawValue: debugOptions)
-        
+
         if let configHandleTaps = arguments["handleTaps"] as? Bool {
             if (configHandleTaps){
                 let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -341,7 +362,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 self.sceneView.gestureRecognizers?.append(panGestureRecognizer)
             }
         }
-        
+
         if let configHandleRotation = arguments["handleRotation"] as? Bool {
             if (configHandleRotation){
                 let rotationGestureRecognizer = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
@@ -349,7 +370,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 self.sceneView.gestureRecognizers?.append(rotationGestureRecognizer)
             }
         }
-        
+
         // Add coaching view
         if let configAutoHideCoachingOverlay = arguments["autoHideCoachingOverlay"] as? Bool {
             autoHideCoachingOverlay = configAutoHideCoachingOverlay
@@ -376,7 +397,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 }
             }
         }
-    
+
         // Configure image tracking
         applyImageTrackingSettings(
             trackingImagePaths: arguments["trackingImagePaths"] as? [String],
@@ -388,10 +409,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
         // Apply lighting multiplier if provided
         applyLightIntensityMultiplier(arguments["lightIntensityMultiplier"] as? NSNumber)
-    
+
         // Update session configuration
         self.sceneView.session.run(configuration)
-        
+
         // Complete the Flutter future
         result(nil)
     }
@@ -405,7 +426,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
             dismissCoachingOverlayIfNeeded()
         }
-        
+
         // Handle image anchors - store the anchor node for later use
         if let imageAnchor = anchor as? ARImageAnchor {
             // Store the image anchor for potential node attachment
@@ -418,7 +439,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     }
 
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
-        
+
         if let planeAnchor = anchor as? ARPlaneAnchor, let plane = trackedPlanes[anchor.identifier] {
             modelBuilder.updatePlaneNode(planeNode: plane.1, anchor: planeAnchor)
             dismissCoachingOverlayIfNeeded()
@@ -446,7 +467,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             anchorCollection.removeValue(forKey: "__image_\(imageName)")
         }
     }
-    
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         if (arcoreMode) {
             do {
@@ -459,7 +480,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
     func addNode(dict_node: Dictionary<String, Any>, dict_anchor: Dictionary<String, Any>? = nil) -> Future<Bool, Never> {
         return Future {promise in
-            
+
             switch (dict_node["type"] as! Int) {
                 case 0: // GLTF2 Model from Flutter asset folder
                     // Get path to given Flutter asset
@@ -483,7 +504,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                                     print("iOS: Unknown anchor type: \(anchorType)")
                                     promise(.success(false))
                                 }
-                            
+
                         } else {
                             // Attach to top-level node of the scene
                             self.sceneView.scene.rootNode.addChildNode(node)
@@ -518,7 +539,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                                     print("iOS: Unknown anchor type: \(anchorType)")
                                     promise(.success(false))
                                 }
-                            
+
                         } else {
                             // Attach to top-level node of the scene
                             self.sceneView.scene.rootNode.addChildNode(node)
@@ -551,7 +572,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                                     default:
                                         promise(.success(false))
                                     }
-                                
+
                             } else {
                                 // Attach to top-level node of the scene
                                 self.sceneView.scene.rootNode.addChildNode(node)
@@ -568,7 +589,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                     let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
                     let documentsDirectory = paths[0]
                     let targetPath = documentsDirectory.appendingPathComponent(dict_node["uri"] as! String).path
- 
+
                     // Add object to scene
                     if let node: SCNNode = self.modelBuilder.makeNodeFromFileSystemGLB(name: dict_node["name"] as! String, modelPath: targetPath, transformation: dict_node["transformation"] as? Array<NSNumber>) {
                         if let anchorName = dict_anchor?["name"] as? String, let anchorType = dict_anchor?["type"] as? Int {
@@ -584,7 +605,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                                 default:
                                     promise(.success(false))
                                 }
-                            
+
                         } else {
                             // Attach to top-level node of the scene
                             self.sceneView.scene.rootNode.addChildNode(node)
@@ -616,7 +637,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                                 default:
                                     promise(.success(false))
                                 }
-                            
+
                         } else {
                             // Attach to top-level node of the scene
                             self.sceneView.scene.rootNode.addChildNode(node)
@@ -630,21 +651,21 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 default:
                     promise(.success(false))
             }
-            
+
         }
     }
-    
+
     func transformNode(name: String, transform: Array<NSNumber>) {
         let node = sceneView.scene.rootNode.childNode(withName: name, recursively: true)
         node?.transform = deserializeMatrix4(transform)
     }
-    
+
     @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard let sceneView = recognizer.view as? ARSCNView else {
             return
         }
         let touchLocation = recognizer.location(in: sceneView)
-    
+
         let allHitResults = sceneView.hitTest(touchLocation, options: [SCNHitTestOption.searchMode : SCNHitTestSearchMode.closest.rawValue])
         // Because 3D model loading can lead to composed nodes, we have to traverse through a node's parent until the parent node with the name assigned by the Flutter API is found
         let nodeHitResults: Array<String> = allHitResults.compactMap { nearestParentWithNameStart(node: $0.node, characters: "[#")?.name }
@@ -652,21 +673,21 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             self.objectManagerChannel.invokeMethod("onNodeTap", arguments: Array(Set(nodeHitResults))) // Chaining of Array and Set is used to remove duplicates
             return
         }
-            
+
         let planeTypes: ARHitTestResult.ResultType
         if #available(iOS 11.3, *){
             planeTypes = ARHitTestResult.ResultType([.existingPlaneUsingGeometry, .featurePoint])
         }else {
             planeTypes = ARHitTestResult.ResultType([.existingPlaneUsingExtent, .featurePoint])
         }
-        
+
         let planeAndPointHitResults = sceneView.hitTest(touchLocation, types: planeTypes)
-        
+
         // store the alignment of the tapped plane anchor so we can refer to is later when transforming the node
         if planeAndPointHitResults.count > 0, let hitAnchor = planeAndPointHitResults.first?.anchor as? ARPlaneAnchor {
             self.tappedPlaneAnchorAlignment = hitAnchor.alignment
         }
-            
+
         let serializedPlaneAndPointHitResults = planeAndPointHitResults.map{serializeHitResult($0)}
         if (serializedPlaneAndPointHitResults.count != 0) {
             self.sessionManagerChannel.invokeMethod("onPlaneOrPointTap", arguments: serializedPlaneAndPointHitResults)
@@ -731,7 +752,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             panningNode = nil
         }
     }
-    
+
     @objc func handleRotation(_ recognizer: UIRotationGestureRecognizer) {
         guard let sceneView = recognizer.view as? ARSCNView else {
             return
@@ -792,7 +813,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             self.objectManagerChannel.invokeMethod("onRotationEnd", arguments: serializeLocalTransformation(node: panningNode))
             panningNode = nil
         }
-    
+
     }
 
     // Recursive helper function to traverse a node's parents until a node with a name starting with the specified characters is found
@@ -803,7 +824,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         if let parent = node?.parent { return nearestParentWithNameStart(node: parent, characters: characters) }
         return nil
     }
-    
+
     func addPlaneAnchor(transform: Array<NSNumber>, name: String){
         let arAnchor = ARAnchor(transform: simd_float4x4(deserializeMatrix4(transform)))
         anchorCollection[name] = arAnchor
@@ -814,7 +835,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             usleep(1) // wait 1 millionth of a second
         }
     }
-    
+
     func deleteAnchor(anchorName: String) {
         if let anchor = anchorCollection[anchorName]{
             // Delete all child nodes
@@ -827,14 +848,14 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             anchorCollection.removeValue(forKey: anchorName)
         }
     }
-    
+
     private class cloudAnchorUploadedListener: CloudAnchorListener {
         private var parent: IosARView
-        
+
         init(parent: IosARView) {
             self.parent = parent
         }
-        
+
         func onCloudTaskComplete(anchorName: String?, anchor: GARAnchor?) {
             if let cloudState = anchor?.cloudState {
                 if (cloudState == GARCloudAnchorState.success) {
@@ -853,11 +874,11 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
     private class cloudAnchorDownloadedListener: CloudAnchorListener {
         private var parent: IosARView
-        
+
         init(parent: IosARView) {
             self.parent = parent
         }
-        
+
         func onCloudTaskComplete(anchorName: String?, anchor: GARAnchor?) {
             if let cloudState = anchor?.cloudState {
                 if (cloudState == GARCloudAnchorState.success) {
@@ -880,7 +901,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
     }
-    
+
     func decodeCloudAnchorState(state: GARCloudAnchorState) -> String {
         switch state {
         case .errorCloudIdNotFound:
@@ -913,7 +934,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             return "Unknown"
         }
     }
-    
+
     // MARK: - Image Tracking
 
     func applyImageTrackingSettings(
@@ -936,11 +957,11 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             setupImageTrackingAsync(trackingImageByteMap: trackingImageByteMap, runSession: runSession)
         }
     }
-    
+
     private func imageCacheKey(_ imagePaths: [String]) -> String {
         return imagePaths.joined(separator: "|")
     }
-    
+
     func setupImageTrackingAsync(imagePaths: [String], runSession: Bool) {
         let cacheKey = imageCacheKey(imagePaths)
         if let cachedImages = IosARView.cachedReferenceImages[cacheKey] {
@@ -960,23 +981,23 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         DispatchQueue.global(qos: .userInitiated).async {
             var referenceImages = Set<ARReferenceImage>()
             var success = true
-            
+
             for imagePath in imagePaths {
                 if let image = self.loadImageFromAssets(imagePath: imagePath) {
                     let imageName = URL(fileURLWithPath: imagePath).deletingPathExtension().lastPathComponent
-                    
+
                     // Create ARReferenceImage with a default physical width (you may want to make this configurable)
                     let physicalWidth: Float = 0.2 // 20cm default width - adjust based on your actual printed image size
                     let referenceImage = ARReferenceImage(image.cgImage!, orientation: .up, physicalWidth: CGFloat(physicalWidth))
                     referenceImage.name = imageName
-                    
+
                     referenceImages.insert(referenceImage)
                 } else {
                     print("Failed to load image: \(imagePath)")
                     success = false
                 }
             }
-            
+
             if referenceImages.count > 100 && runSession {
                 let allImages = Array(referenceImages)
                 let imageBatches = stride(from: 0, to: allImages.count, by: 100).map {
@@ -992,26 +1013,26 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
     }
-    
+
     func setupImageTrackingAsync(trackingImageByteMap: Dictionary<String,FlutterStandardTypedData>, runSession: Bool) {
         DispatchQueue.global(qos: .userInitiated).async {
             var referenceImages = Set<ARReferenceImage>()
             var success = true
-            
+
             for(imageName, imageBytes) in trackingImageByteMap {
                 if let image = self.loadImageFromBytes(imageBytes: imageBytes.data) {
                     // Create ARReferenceImage with a default physical width (you may want to make this configurable)
                     let physicalWidth: Float = 0.2 // 20cm default width - adjust based on your actual printed image size
                     let referenceImage = ARReferenceImage(image.cgImage!, orientation: .up, physicalWidth: CGFloat(physicalWidth))
                     referenceImage.name = imageName
-                    
+
                     referenceImages.insert(referenceImage)
                 } else {
                     print("Failed to load image: \(imageName)")
                     success = false
                 }
             }
-            
+
             if referenceImages.count > 100 && runSession {
                 let allImages = Array(referenceImages)
                 let imageBatches = stride(from: 0, to: allImages.count, by: 100).map {
@@ -1027,10 +1048,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
     }
-    
+
     private func runImageTrackingSetup(referenceImages: Set<ARReferenceImage>, runSession: Bool, success: Bool, sendConfigured: Bool) {
         guard !isDisposed else { return }
-        
+
         DispatchQueue.main.async {
             self.configuration.detectionImages = referenceImages
             if runSession {
@@ -1044,7 +1065,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
     }
-    
+
     private func runImageDetectionBatches(
             imageBatches: [[ARReferenceImage]],
             batchIndex: Int = 0,
@@ -1052,10 +1073,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             success: Bool
         ) {
             guard !isDisposed else { return }
-            
+
             let referenceImages: Set<ARReferenceImage> = Set(imageBatches[batchIndex])
             runImageTrackingSetup(referenceImages: referenceImages, runSession: true, success: success, sendConfigured: sendConfigured)
-            
+
             // Schedule next batch rotation
             let nextIndex = (batchIndex + 1) % imageBatches.count
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
@@ -1097,7 +1118,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             }
         }
     }
-    
+
     func loadImageFromAssets(imagePath: String) -> UIImage? {
         let key = FlutterDartProject.lookupKey(forAsset: imagePath)
         if let directPath = Bundle.main.path(forResource: key, ofType: nil) {
@@ -1108,28 +1129,28 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         }
         return nil
     }
-    
+
     func loadImageFromBytes(imageBytes: Data) -> UIImage? {
         return UIImage(data: imageBytes)
     }
-    
+
     func handleImageDetection(imageAnchor: ARImageAnchor) {
         let imageName = imageAnchor.referenceImage.name ?? "unknown"
         let transformation = serializeMatrix(imageAnchor.transform)
         let width = imageAnchor.referenceImage.physicalSize.width
         let height = imageAnchor.referenceImage.physicalSize.height
-        
+
         print("iOS: Image detected - \(imageName)")
         print("iOS: Transform: \(transformation)")
         dismissCoachingOverlayIfNeeded()
-        
+
         let arguments: [String: Any] = [
             "imageName": imageName,
             "transformation": transformation,
             "width": width,
             "height": height
         ]
-        
+
         DispatchQueue.main.async {
             self.sessionManagerChannel.invokeMethod("onImageDetected", arguments: arguments)
         }
@@ -1156,11 +1177,11 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 // ---------------------- ARCoachingOverlayViewDelegate ---------------------------------------
 
 extension IosARView: ARCoachingOverlayViewDelegate {
-    
+
     func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView){
         // use this delegate method to hide anything in the UI that could cover the coaching overlay view
     }
-    
+
     func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {
         // Reset the session.
         self.sceneView.session.run(configuration, options: [.resetTracking])

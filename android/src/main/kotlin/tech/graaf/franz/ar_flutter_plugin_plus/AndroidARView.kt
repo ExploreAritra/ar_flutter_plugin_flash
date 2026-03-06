@@ -49,11 +49,11 @@ import java.io.FileInputStream
 
 
 internal class AndroidARView(
-        val activity: Activity,
-        context: Context,
-        messenger: BinaryMessenger,
-        id: Int,
-        creationParams: Map<String?, Any?>?
+    val activity: Activity,
+    context: Context,
+    messenger: BinaryMessenger,
+    id: Int,
+    creationParams: Map<String?, Any?>?
 ) : PlatformView {
     companion object {
         private val cachedImageDatabaseBytes: MutableMap<String, ByteArray> = mutableMapOf()
@@ -132,253 +132,274 @@ internal class AndroidARView(
 
     // Method channel handlers
     private val onSessionMethodCall =
-            object : MethodChannel.MethodCallHandler {
-                override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-                    when (call.method) {
-                        "init" -> {
-                            initializeARView(call, result)
-                        }
-                        "setLightIntensityMultiplier" -> {
-                            val multiplier = call.argument<Number>("multiplier")?.toFloat() ?: 1.0f
-                            modelRenderer.setLightIntensityMultiplier(multiplier)
-                            result.success(null)
-                        }
-                        "updateImageTrackingSettings" -> {
-                            val argTrackingImagePaths: List<String>? = call.argument<List<String>>("trackingImagePaths")
-                            val argContinuousImageTracking: Boolean? = call.argument<Boolean>("continuousImageTracking")
-                            val argImageTrackingUpdateIntervalMs: Number? = call.argument<Number>("imageTrackingUpdateIntervalMs")
+        object : MethodChannel.MethodCallHandler {
+            override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+                when (call.method) {
+                    "init" -> {
+                        initializeARView(call, result)
+                    }
+                    "toggleFlashlight" -> {
+                        val state = call.argument<Boolean>("state") ?: false
+                        val currentSession = session
 
-                            applyImageTrackingSettings(
-                                imagePaths = argTrackingImagePaths,
-                                imageByteMap = null,
-                                imageDbPath = null,
-                                continuous = argContinuousImageTracking,
-                                intervalMs = argImageTrackingUpdateIntervalMs
-                            )
-                            result.success(null)
+                        if (currentSession != null) {
+                            try {
+                                val config = currentSession.config
+                                if (state) {
+                                    config.flashMode = com.google.ar.core.Config.FlashMode.TORCH
+                                } else {
+                                    config.flashMode = com.google.ar.core.Config.FlashMode.OFF
+                                }
+                                currentSession.configure(config)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.error("FLASH_ERROR", "Failed to configure ARCore flash: ${e.message}", null)
+                            }
+                        } else {
+                            result.error("NO_SESSION", "AR Session is not currently running", null)
                         }
-                        "precompileImageTrackingDatabase" -> {
-                            val argTrackingImagePaths: List<String>? = call.argument<List<String>>("trackingImagePaths")
-                            val imagePaths = argTrackingImagePaths ?: emptyList()
-                            val session = session
-                            if (session == null) {
-                                result.error("Error", "Session not initialized", null)
-                                return
+                    }
+                    "setLightIntensityMultiplier" -> {
+                        val multiplier = call.argument<Number>("multiplier")?.toFloat() ?: 1.0f
+                        modelRenderer.setLightIntensityMultiplier(multiplier)
+                        result.success(null)
+                    }
+                    "updateImageTrackingSettings" -> {
+                        val argTrackingImagePaths: List<String>? = call.argument<List<String>>("trackingImagePaths")
+                        val argContinuousImageTracking: Boolean? = call.argument<Boolean>("continuousImageTracking")
+                        val argImageTrackingUpdateIntervalMs: Number? = call.argument<Number>("imageTrackingUpdateIntervalMs")
+
+                        applyImageTrackingSettings(
+                            imagePaths = argTrackingImagePaths,
+                            imageByteMap = null,
+                            imageDbPath = null,
+                            continuous = argContinuousImageTracking,
+                            intervalMs = argImageTrackingUpdateIntervalMs
+                        )
+                        result.success(null)
+                    }
+                    "precompileImageTrackingDatabase" -> {
+                        val argTrackingImagePaths: List<String>? = call.argument<List<String>>("trackingImagePaths")
+                        val imagePaths = argTrackingImagePaths ?: emptyList()
+                        val session = session
+                        if (session == null) {
+                            result.error("Error", "Session not initialized", null)
+                            return
+                        }
+
+                        imageTrackingExecutor.execute {
+                            var success = true
+                            try {
+                                val cacheKey = imageCacheKey(imagePaths)
+                                if (!cachedImageDatabaseBytes.containsKey(cacheKey)) {
+                                    val (imageDatabase, buildSuccess) = buildImageDatabase(session, imagePaths)
+                                    success = buildSuccess
+                                    val bytes = serializeImageDatabase(imageDatabase)
+                                    cachedImageDatabaseBytes[cacheKey] = bytes
+                                }
+                            } catch (e: Exception) {
+                                success = false
+                                Log.e(TAG, "Error precompiling image database: ${e.message}")
                             }
 
-                            imageTrackingExecutor.execute {
-                                var success = true
+                            activity.runOnUiThread {
+                                result.success(success)
+                            }
+                        }
+                    }
+                    "getAnchorPose" -> {
+                        val anchorName = call.argument<String>("anchorId")
+                        val anchor = if (anchorName != null) anchorsByName[anchorName] else null
+                        if (anchor != null) {
+                            result.success(serializePose(anchor.pose))
+                        } else {
+                            result.error("Error", "could not get anchor pose", null)
+                        }
+                    }
+                    "getCameraPose" -> {
+                        val cameraPose = currentFrame?.camera?.displayOrientedPose
+                        if (cameraPose != null) {
+                            result.success(serializePose(cameraPose))
+                        } else {
+                            result.error("Error", "could not get camera pose", null)
+                        }
+                    }
+                    "snapshot" -> {
+                        val width = glSurfaceView.width
+                        val height = glSurfaceView.height
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+                        // Create a handler thread to offload the processing of the image.
+                        val handlerThread = HandlerThread("PixelCopier")
+                        handlerThread.start()
+                        // Copy the GLSurfaceView (camera + ARCore draws).
+                        PixelCopy.request(glSurfaceView, bitmap, { copyResult: Int ->
+                            if (copyResult == PixelCopy.SUCCESS) {
                                 try {
-                                    val cacheKey = imageCacheKey(imagePaths)
-                                    if (!cachedImageDatabaseBytes.containsKey(cacheKey)) {
-                                        val (imageDatabase, buildSuccess) = buildImageDatabase(session, imagePaths)
-                                        success = buildSuccess
-                                        val bytes = serializeImageDatabase(imageDatabase)
-                                        cachedImageDatabaseBytes[cacheKey] = bytes
-                                    }
-                                } catch (e: Exception) {
-                                    success = false
-                                    Log.e(TAG, "Error precompiling image database: ${e.message}")
-                                }
-
-                                activity.runOnUiThread {
-                                    result.success(success)
-                                }
-                            }
-                        }
-                        "getAnchorPose" -> {
-                            val anchorName = call.argument<String>("anchorId")
-                            val anchor = if (anchorName != null) anchorsByName[anchorName] else null
-                            if (anchor != null) {
-                                result.success(serializePose(anchor.pose))
-                            } else {
-                                result.error("Error", "could not get anchor pose", null)
-                            }
-                        }
-                        "getCameraPose" -> {
-                            val cameraPose = currentFrame?.camera?.displayOrientedPose
-                            if (cameraPose != null) {
-                                result.success(serializePose(cameraPose))
-                            } else {
-                                result.error("Error", "could not get camera pose", null)
-                            }
-                        }
-                        "snapshot" -> {
-                            val width = glSurfaceView.width
-                            val height = glSurfaceView.height
-                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-
-                            // Create a handler thread to offload the processing of the image.
-                            val handlerThread = HandlerThread("PixelCopier")
-                            handlerThread.start()
-                            // Copy the GLSurfaceView (camera + ARCore draws).
-                            PixelCopy.request(glSurfaceView, bitmap, { copyResult: Int ->
-                                if (copyResult == PixelCopy.SUCCESS) {
-                                    try {
-                                        val mainHandler = Handler(context.mainLooper)
-                                        val runnable = Runnable {
-                                            // Composite Filament TextureView on top if available.
-                                            filamentTextureView?.let { overlay ->
-                                                if (overlay.isAvailable) {
-                                                    val overlayBitmap = overlay.getBitmap(width, height)
-                                                    if (overlayBitmap != null) {
-                                                        val canvas = Canvas(bitmap)
-                                                        canvas.drawBitmap(overlayBitmap, 0f, 0f, null)
-                                                        overlayBitmap.recycle()
-                                                    }
+                                    val mainHandler = Handler(context.mainLooper)
+                                    val runnable = Runnable {
+                                        // Composite Filament TextureView on top if available.
+                                        filamentTextureView?.let { overlay ->
+                                            if (overlay.isAvailable) {
+                                                val overlayBitmap = overlay.getBitmap(width, height)
+                                                if (overlayBitmap != null) {
+                                                    val canvas = Canvas(bitmap)
+                                                    canvas.drawBitmap(overlayBitmap, 0f, 0f, null)
+                                                    overlayBitmap.recycle()
                                                 }
                                             }
-
-                                            val stream = ByteArrayOutputStream()
-                                            bitmap.compress(Bitmap.CompressFormat.PNG, 90, stream)
-                                            val data = stream.toByteArray()
-                                            result.success(data)
                                         }
-                                        mainHandler.post(runnable)
-                                    } catch (e: IOException) {
-                                        result.error("e", e.message, e.stackTrace)
+
+                                        val stream = ByteArrayOutputStream()
+                                        bitmap.compress(Bitmap.CompressFormat.PNG, 90, stream)
+                                        val data = stream.toByteArray()
+                                        result.success(data)
                                     }
-                                } else {
-                                    result.error("e", "failed to take screenshot", null)
-                                }
-                                handlerThread.quitSafely()
-                            }, Handler(handlerThread.looper))
-                        }
-                        "dispose" -> {
-                            dispose()
-                        }
-                        else -> {}
-                    }
-                }
-            }
-    private val onObjectMethodCall =
-            object : MethodChannel.MethodCallHandler {
-                override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-                    when (call.method) {
-                        "init" -> {
-                            // objectManagerChannel.invokeMethod("onError", listOf("ObjectTEST from
-                            // Android"))
-                            val scaleFactor = call.argument<Double>("androidScaleFactor")
-                            if (scaleFactor != null) {
-                                androidModelScaleFactor = scaleFactor.toFloat()
-                            }
-                        }
-                        "addNode" -> {
-                            val dict_node: HashMap<String, Any>? = call.arguments as? HashMap<String, Any>
-                            dict_node?.let{
-                                addNode(it).thenAccept{status: Boolean ->
-                                    result.success(status)
-                                }.exceptionally { throwable ->
-                                    result.error("e", throwable.message, throwable.stackTrace)
-                                    null
-                                }
-                            }
-                        }
-                        "addNodeToPlaneAnchor" -> {
-                            val dict_node: HashMap<String, Any>? = call.argument<HashMap<String, Any>>("node")
-                            val dict_anchor: HashMap<String, Any>? = call.argument<HashMap<String, Any>>("anchor")
-                            if (dict_node != null && dict_anchor != null) {
-                                addNode(dict_node, dict_anchor).thenAccept{status: Boolean ->
-                                    result.success(status)
-                                }.exceptionally { throwable ->
-                                    result.error("e", throwable.message, throwable.stackTrace)
-                                    null
+                                    mainHandler.post(runnable)
+                                } catch (e: IOException) {
+                                    result.error("e", e.message, e.stackTrace)
                                 }
                             } else {
-                                result.success(false)
+                                result.error("e", "failed to take screenshot", null)
                             }
-
+                            handlerThread.quitSafely()
+                        }, Handler(handlerThread.looper))
+                    }
+                    "dispose" -> {
+                        dispose()
+                    }
+                    else -> {}
+                }
+            }
+        }
+    private val onObjectMethodCall =
+        object : MethodChannel.MethodCallHandler {
+            override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+                when (call.method) {
+                    "init" -> {
+                        // objectManagerChannel.invokeMethod("onError", listOf("ObjectTEST from
+                        // Android"))
+                        val scaleFactor = call.argument<Double>("androidScaleFactor")
+                        if (scaleFactor != null) {
+                            androidModelScaleFactor = scaleFactor.toFloat()
                         }
-                        "removeNode" -> {
-                            val nodeName: String? = call.argument<String>("name")
-                            nodeName?.let{
-                                nodesByName.remove(nodeName)
-                                anchorChildren.values.forEach { it.remove(nodeName) }
-                                modelRenderer.removeModel(nodeName)
+                    }
+                    "addNode" -> {
+                        val dict_node: HashMap<String, Any>? = call.arguments as? HashMap<String, Any>
+                        dict_node?.let{
+                            addNode(it).thenAccept{status: Boolean ->
+                                result.success(status)
+                            }.exceptionally { throwable ->
+                                result.error("e", throwable.message, throwable.stackTrace)
+                                null
+                            }
+                        }
+                    }
+                    "addNodeToPlaneAnchor" -> {
+                        val dict_node: HashMap<String, Any>? = call.argument<HashMap<String, Any>>("node")
+                        val dict_anchor: HashMap<String, Any>? = call.argument<HashMap<String, Any>>("anchor")
+                        if (dict_node != null && dict_anchor != null) {
+                            addNode(dict_node, dict_anchor).thenAccept{status: Boolean ->
+                                result.success(status)
+                            }.exceptionally { throwable ->
+                                result.error("e", throwable.message, throwable.stackTrace)
+                                null
+                            }
+                        } else {
+                            result.success(false)
+                        }
+
+                    }
+                    "removeNode" -> {
+                        val nodeName: String? = call.argument<String>("name")
+                        nodeName?.let{
+                            nodesByName.remove(nodeName)
+                            anchorChildren.values.forEach { it.remove(nodeName) }
+                            modelRenderer.removeModel(nodeName)
+                            result.success(null)
+                        }
+                    }
+                    "transformationChanged" -> {
+                        val nodeName: String? = call.argument<String>("name")
+                        val newTransformation: ArrayList<Double>? = call.argument<ArrayList<Double>>("transformation")
+                        nodeName?.let{ name ->
+                            newTransformation?.let{ transform ->
+                                transformNode(name, transform)
                                 result.success(null)
                             }
                         }
-                        "transformationChanged" -> {
-                            val nodeName: String? = call.argument<String>("name")
-                            val newTransformation: ArrayList<Double>? = call.argument<ArrayList<Double>>("transformation")
-                            nodeName?.let{ name ->
-                                newTransformation?.let{ transform ->
-                                    transformNode(name, transform)
-                                    result.success(null)
-                                }
-                            }
-                        }
-                        else -> {}
                     }
+                    else -> {}
                 }
             }
+        }
     private val onAnchorMethodCall =
-            object : MethodChannel.MethodCallHandler {
-                override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-                    when (call.method) {
-                        "addAnchor" -> {
-                            val anchorType: Int? = call.argument<Int>("type")
-                            if (anchorType != null){
-                                when(anchorType) {
-                                    0 -> { // Plane Anchor
-                                        val transform: ArrayList<Double>? = call.argument<ArrayList<Double>>("transformation")
-                                        val name: String? = call.argument<String>("name")
-                                        if ( name != null && transform != null){
-                                            result.success(addPlaneAnchor(transform, name))
-                                        } else {
-                                            result.success(false)
-                                        }
-
+        object : MethodChannel.MethodCallHandler {
+            override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+                when (call.method) {
+                    "addAnchor" -> {
+                        val anchorType: Int? = call.argument<Int>("type")
+                        if (anchorType != null){
+                            when(anchorType) {
+                                0 -> { // Plane Anchor
+                                    val transform: ArrayList<Double>? = call.argument<ArrayList<Double>>("transformation")
+                                    val name: String? = call.argument<String>("name")
+                                    if ( name != null && transform != null){
+                                        result.success(addPlaneAnchor(transform, name))
+                                    } else {
+                                        result.success(false)
                                     }
-                                    else -> result.success(false)
-                                }
-                            } else {
-                                result.success(false)
-                            }
-                        }
-                        "removeAnchor" -> {
-                            val anchorName: String? = call.argument<String>("name")
-                            anchorName?.let{ name ->
-                                removeAnchor(name)
-                            }
-                        }
-                        "initGoogleCloudAnchorMode" -> {
-                            if (session != null) {
-                                val config = Config(session)
-                                config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
-                                config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                                config.focusMode = Config.FocusMode.AUTO
-                                session?.configure(config)
 
-                                cloudAnchorHandler = CloudAnchorHandler(session!!)
-                            } else {
-                                sessionManagerChannel.invokeMethod("onError", listOf("Error initializing cloud anchor mode: Session is null"))
-                            }
-                        }
-                        "uploadAnchor" ->  {
-                            val anchorName: String? = call.argument<String>("name")
-                            val ttl: Int? = call.argument<Int>("ttl")
-                            anchorName?.let {
-                                val anchor = anchorsByName[anchorName]
-                                if (ttl != null) {
-                                    cloudAnchorHandler.hostCloudAnchorWithTtl(anchorName, anchor, cloudAnchorUploadedListener(), ttl!!)
-                                } else {
-                                    cloudAnchorHandler.hostCloudAnchor(anchorName, anchor, cloudAnchorUploadedListener())
                                 }
-                                result.success(true)
+                                else -> result.success(false)
                             }
-
+                        } else {
+                            result.success(false)
                         }
-                        "downloadAnchor" -> {
-                            val anchorId: String? = call.argument<String>("cloudanchorid")
-                            anchorId?.let {
-                                cloudAnchorHandler.resolveCloudAnchor(anchorId, cloudAnchorDownloadedListener())
-                            }
-                        }
-                        else -> {}
                     }
+                    "removeAnchor" -> {
+                        val anchorName: String? = call.argument<String>("name")
+                        anchorName?.let{ name ->
+                            removeAnchor(name)
+                        }
+                    }
+                    "initGoogleCloudAnchorMode" -> {
+                        if (session != null) {
+                            val config = Config(session)
+                            config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
+                            config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                            config.focusMode = Config.FocusMode.AUTO
+                            session?.configure(config)
+
+                            cloudAnchorHandler = CloudAnchorHandler(session!!)
+                        } else {
+                            sessionManagerChannel.invokeMethod("onError", listOf("Error initializing cloud anchor mode: Session is null"))
+                        }
+                    }
+                    "uploadAnchor" ->  {
+                        val anchorName: String? = call.argument<String>("name")
+                        val ttl: Int? = call.argument<Int>("ttl")
+                        anchorName?.let {
+                            val anchor = anchorsByName[anchorName]
+                            if (ttl != null) {
+                                cloudAnchorHandler.hostCloudAnchorWithTtl(anchorName, anchor, cloudAnchorUploadedListener(), ttl!!)
+                            } else {
+                                cloudAnchorHandler.hostCloudAnchor(anchorName, anchor, cloudAnchorUploadedListener())
+                            }
+                            result.success(true)
+                        }
+
+                    }
+                    "downloadAnchor" -> {
+                        val anchorId: String? = call.argument<String>("cloudanchorid")
+                        anchorId?.let {
+                            cloudAnchorHandler.resolveCloudAnchor(anchorId, cloudAnchorDownloadedListener())
+                        }
+                    }
+                    else -> {}
                 }
             }
+        }
 
     override fun getView(): View {
         return rootView
@@ -451,47 +472,47 @@ internal class AndroidARView(
 
     private fun setupLifeCycle(context: Context) {
         activityLifecycleCallbacks =
-                object : Application.ActivityLifecycleCallbacks {
-                    override fun onActivityCreated(
-                            activity: Activity,
-                            savedInstanceState: Bundle?
-                    ) {
-                    }
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityCreated(
+                    activity: Activity,
+                    savedInstanceState: Bundle?
+                ) {
+                }
 
-                    override fun onActivityStarted(activity: Activity) {
-                    }
+                override fun onActivityStarted(activity: Activity) {
+                }
 
-                    override fun onActivityResumed(activity: Activity) {
-                        if (isARInitialized) {
-                            this@AndroidARView.onResume()
-                        }
-                    }
-
-                    override fun onActivityPaused(activity: Activity) {
-                        try {
-                            session?.pause()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error in onActivityPaused: ${e.message}")
-                        }
-
-                        this@AndroidARView.onPause()
-                    }
-
-                    override fun onActivityStopped(activity: Activity) {
-                        // onStopped()
-                        this@AndroidARView.onPause()
-                    }
-
-                    override fun onActivitySaveInstanceState(
-                            activity: Activity,
-                            outState: Bundle
-                    ) {}
-
-                    override fun onActivityDestroyed(activity: Activity) {
-//                        onPause()
-//                        onDestroy()
+                override fun onActivityResumed(activity: Activity) {
+                    if (isARInitialized) {
+                        this@AndroidARView.onResume()
                     }
                 }
+
+                override fun onActivityPaused(activity: Activity) {
+                    try {
+                        session?.pause()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in onActivityPaused: ${e.message}")
+                    }
+
+                    this@AndroidARView.onPause()
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    // onStopped()
+                    this@AndroidARView.onPause()
+                }
+
+                override fun onActivitySaveInstanceState(
+                    activity: Activity,
+                    outState: Bundle
+                ) {}
+
+                override fun onActivityDestroyed(activity: Activity) {
+//                        onPause()
+//                        onDestroy()
+                }
+            }
 
         activity.application.registerActivityLifecycleCallbacks(this.activityLifecycleCallbacks)
     }
@@ -775,7 +796,7 @@ internal class AndroidARView(
                             }
                             return@execute
                         }
-                        
+
                         if (unlitImageMaterialBytes.isEmpty()) {
                             Log.e("AndroidARView", "image_unlit.filamat is empty")
                             activity.runOnUiThread {
@@ -783,7 +804,7 @@ internal class AndroidARView(
                             }
                             return@execute
                         }
-                        
+
                         Log.d("AndroidARView", "Loaded image_unlit.filamat: ${unlitImageMaterialBytes.size} bytes")
 
                         glSurfaceView.queueEvent {
@@ -1298,28 +1319,28 @@ internal class AndroidARView(
                 "onAnchorDownloadSuccess",
                 serializeAnchor(anchorIdName, anchor, anchorChildren[anchorIdName] ?: emptyList()),
                 object: MethodChannel.Result {
-                override fun success(result: Any?) {
-                    val registeredName = result.toString()
-                    if (registeredName.isNotEmpty() && registeredName != anchorIdName) {
-                        val existing = anchorsByName.remove(anchorIdName)
-                        if (existing != null) {
-                            anchorsByName[registeredName] = existing
-                        }
-                        val children = anchorChildren.remove(anchorIdName)
-                        if (children != null) {
-                            anchorChildren[registeredName] = children
+                    override fun success(result: Any?) {
+                        val registeredName = result.toString()
+                        if (registeredName.isNotEmpty() && registeredName != anchorIdName) {
+                            val existing = anchorsByName.remove(anchorIdName)
+                            if (existing != null) {
+                                anchorsByName[registeredName] = existing
+                            }
+                            val children = anchorChildren.remove(anchorIdName)
+                            if (children != null) {
+                                anchorChildren[registeredName] = children
+                            }
                         }
                     }
-                }
 
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin: $errorMessage"))
-                }
+                    override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                        sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin: $errorMessage"))
+                    }
 
-                override fun notImplemented() {
-                    sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin"))
-                }
-            })
+                    override fun notImplemented() {
+                        sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin"))
+                    }
+                })
         }
     }
 
@@ -1873,7 +1894,3 @@ internal class AndroidARView(
     )
 
 }
-
-
-
-
