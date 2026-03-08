@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.5
+
+- **New Feature:** Added `updateVisibilityOptions` to dynamically toggle debug visualizations (`showFeaturePoints`, `showPlanes`, `showWorldOrigin`) on the fly without needing to re-initialize the AR session. This is critical for capturing clean, artifact-free snapshots.
+
 ## 1.1.4
 
 - **Fix:** Resolved Swift-to-Objective-C bridging header import paths for iOS (`ar_flutter_plugin_flash-Swift.h`) to fix Xcode build failures.

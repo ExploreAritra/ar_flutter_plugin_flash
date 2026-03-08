@@ -159,6 +159,25 @@ internal class AndroidARView(
                             result.error("NO_SESSION", "AR Session is not currently running", null)
                         }
                     }
+                    // 🟢 NEW: Dynamic Visibility Toggler
+                    "updateVisibilityOptions" -> {
+                        call.argument<Boolean>("showFeaturePoints")?.let {
+                            showFeaturePoints = it
+                        }
+                        call.argument<Boolean>("showPlanes")?.let {
+                            showPlanes = it
+                        }
+                        call.argument<Boolean>("showWorldOrigin")?.let {
+                            showWorldOrigin = it
+                            // Clean up origin anchor if toggled off
+                            if (!it) {
+                                worldOriginAnchor?.detach()
+                                worldOriginAnchor = null
+                                lastWorldOriginMatrix = null
+                            }
+                        }
+                        result.success(true)
+                    }
                     "setLightIntensityMultiplier" -> {
                         val multiplier = call.argument<Number>("multiplier")?.toFloat() ?: 1.0f
                         modelRenderer.setLightIntensityMultiplier(multiplier)

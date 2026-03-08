@@ -10,7 +10,8 @@ To achieve a smooth tracking the app must be built with "debuggable false" in bu
 Flutter Plugin for (collaborative) Augmented Reality - Supports ARKit for iOS and ARCore for Android devices.
 
 **✨ What's new in this version (`ar_flutter_plugin_flash`)?**
-This package adds **native Flashlight / Torch support** directly into the AR Session. Standard Flutter flashlight plugins crash with a `CAMERA_IN_USE` error when AR is active because ARCore/ARKit take exclusive low-level hardware locks on the camera. This plugin solves that by routing the flashlight command directly through the native AR frameworks!
+1. **Native Flashlight / Torch Support (`toggleFlashlight`)**: Standard Flutter flashlight plugins crash with a `CAMERA_IN_USE` error when AR is active because ARCore/ARKit take exclusive low-level hardware locks on the camera. This plugin solves that by routing the flashlight command directly through the native AR frameworks!
+2. **Dynamic UI Toggling (`updateVisibilityOptions`)**: You can now dynamically hide or show `showFeaturePoints`, `showPlanes`, and `showWorldOrigin` on the fly without restarting the AR Session. This is perfect for temporarily hiding AR artifacts right before taking a clean snapshot!
 
 ### Acknowledgements
 This plugin is an extended fork of the excellent [ar_flutter_plugin_plus](https://pub.dev/packages/ar_flutter_plugin_plus) by Franz Graaf, which itself was based on the original [ar_flutter_plugin](https://pub.dev/packages/ar_flutter_plugin) by Lars Carius. Many thanks to Oleksandr Leuschenko for the [arkit_flutter_plugin](https://github.com/olexale/arkit_flutter_plugin) and to Gian Marco Di Francesco for the [arcore_flutter_plugin](https://github.com/giandifra/arcore_flutter_plugin) which both served as a great basis and starting point for this project.
@@ -22,7 +23,7 @@ This plugin is an extended fork of the excellent [ar_flutter_plugin_plus](https:
 Add the Flutter package to your project by running:
 
 ```bash
-flutter pub add ar_flutter_plugin_plus
+flutter pub add ar_flutter_plugin_flash
 ```
 
 Or manually add this to your `pubspec.yaml` file (and run `flutter pub get`):
@@ -31,7 +32,7 @@ Or manually add this to your `pubspec.yaml` file (and run `flutter pub get`):
 
 ```yaml
 dependencies:
-  ar_flutter_plugin_plus: ^1.1.2
+  ar_flutter_plugin_flash: ^1.1.5
 ```
 
 ### Importing
@@ -44,8 +45,7 @@ import 'package:ar_flutter_plugin_flash/ar_flutter_plugin_flash.dart';
 
 If you have problems with permissions on iOS (e.g. with the camera view not showing up even though camera access is allowed), add this to the `podfile` of your app's `ios` directory:
 
-```pod
-  post_install do |installer|
+```post_install do |installer|
     installer.pods_project.targets.each do |target|
       flutter_additional_ios_build_settings(target)
       target.build_configurations.each do |config|

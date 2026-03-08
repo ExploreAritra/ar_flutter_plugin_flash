@@ -104,6 +104,46 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 //result(nil)
                 initializeARView(arguments: arguments!, result: result)
                 break
+
+            // 🟢 NEW: Dynamic Visibility Toggler
+            case "updateVisibilityOptions":
+                var debugOptions = self.sceneView.debugOptions.rawValue
+
+                if let showFeaturePoints = arguments?["showFeaturePoints"] as? Bool {
+                    if (showFeaturePoints) {
+                        debugOptions |= ARSCNDebugOptions.showFeaturePoints.rawValue
+                    } else {
+                        debugOptions &= ~ARSCNDebugOptions.showFeaturePoints.rawValue
+                    }
+                }
+
+                if let showWorldOrigin = arguments?["showWorldOrigin"] as? Bool {
+                    if (showWorldOrigin) {
+                        debugOptions |= ARSCNDebugOptions.showWorldOrigin.rawValue
+                    } else {
+                        debugOptions &= ~ARSCNDebugOptions.showWorldOrigin.rawValue
+                    }
+                }
+
+                self.sceneView.debugOptions = ARSCNDebugOptions(rawValue: debugOptions)
+
+                if let configShowPlanes = arguments?["showPlanes"] as? Bool {
+                    showPlanes = configShowPlanes
+                    if (showPlanes){
+                        // Visualize currently tracked planes
+                        for plane in trackedPlanes.values {
+                            plane.0.addChildNode(plane.1)
+                        }
+                    } else {
+                        // Remove currently visualized planes
+                        for plane in trackedPlanes.values {
+                            plane.1.removeFromParentNode()
+                        }
+                    }
+                }
+                result(true)
+                break
+
             case "toggleFlashlight":
                 guard let state = arguments?["state"] as? Bool else {
                     result(FlutterError(code: "INVALID_ARGS", message: "State boolean is required", details: nil))

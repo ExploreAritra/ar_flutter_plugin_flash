@@ -214,6 +214,24 @@ class ARSessionManager {
     });
   }
 
+  /// Dynamically updates the visibility of AR debugging options without restarting the session.
+  /// Pass null for any parameter you do not want to change.
+  Future<void> updateVisibilityOptions({
+    bool? showFeaturePoints,
+    bool? showPlanes,
+    bool? showWorldOrigin,
+  }) async {
+    try {
+      await _channel.invokeMethod<void>('updateVisibilityOptions', {
+        if (showFeaturePoints != null) 'showFeaturePoints': showFeaturePoints,
+        if (showPlanes != null) 'showPlanes': showPlanes,
+        if (showWorldOrigin != null) 'showWorldOrigin': showWorldOrigin,
+      });
+    } catch (e) {
+      debugPrint('Failed to update visibility options: $e');
+    }
+  }
+
   /// Adjusts the lighting intensity multiplier for the AR scene.
   /// A value of 1.0 keeps the default lighting. Higher values brighten the model.
   Future<void> setLightIntensityMultiplier(double multiplier) async {
