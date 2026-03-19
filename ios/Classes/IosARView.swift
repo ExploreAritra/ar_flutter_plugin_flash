@@ -45,6 +45,9 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     private static var cachedReferenceImages: [String: Set<ARReferenceImage>] = [:]
     private var isDisposed: Bool = false
 
+    // Tracker for detected planes
+    private var lastPlaneCount = 0
+
     init(
         frame: CGRect,
         viewIdentifier viewId: Int64,
@@ -105,7 +108,6 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 initializeARView(arguments: arguments!, result: result)
                 break
 
-            // 🟢 NEW: Dynamic Visibility Toggler
             case "updateVisibilityOptions":
                 var debugOptions = self.sceneView.debugOptions.rawValue
 
@@ -457,6 +459,17 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         result(nil)
     }
 
+    // Fires the plane count back to Flutter whenever it changes
+    private func notifyPlaneCountChanged() {
+        let currentCount = trackedPlanes.count
+        if currentCount != lastPlaneCount {
+            lastPlaneCount = currentCount
+            DispatchQueue.main.async {
+                self.sessionManagerChannel.invokeMethod("onPlanesUpdated", arguments: ["count": currentCount])
+            }
+        }
+    }
+
     func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
         if let planeAnchor = anchor as? ARPlaneAnchor{
             let plane = modelBuilder.makePlane(anchor: planeAnchor, flutterAssetFile: customPlaneTexturePath)
@@ -465,6 +478,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 node.addChildNode(plane)
             }
             dismissCoachingOverlayIfNeeded()
+            notifyPlaneCountChanged() // Trigger update
         }
 
         // Handle image anchors - store the anchor node for later use
@@ -499,7 +513,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
     }
 
     func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
-        trackedPlanes.removeValue(forKey: anchor.identifier)
+        // Check if the removed anchor was a tracked plane
+        if trackedPlanes.removeValue(forKey: anchor.identifier) != nil {
+            notifyPlaneCountChanged() // Trigger update
+        }
 
         if let imageAnchor = anchor as? ARImageAnchor {
             let imageName = imageAnchor.referenceImage.name ?? "unknown"

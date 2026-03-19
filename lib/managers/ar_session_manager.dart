@@ -13,6 +13,8 @@ typedef ARImageDetectionResultHandler = void Function(
     String imageName, Matrix4 transformation, double width, double height);
 typedef ARTrackingStateHandler = void Function(String state, String reason);
 typedef ARImageTrackingConfiguredHandler = void Function(bool success);
+// Type definition for plane tracking
+typedef ARPlanesUpdatedHandler = void Function(int activePlaneCount);
 
 /// Manages the session configuration, parameters and events of an [ARView]
 class ARSessionManager {
@@ -40,6 +42,9 @@ class ARSessionManager {
   /// Receives a callback when image tracking database configuration finishes
   ARImageTrackingConfiguredHandler? onImageTrackingConfigured;
 
+  // Receives a callback whenever ARCore/ARKit detects or loses a plane
+  ARPlanesUpdatedHandler? onPlanesUpdated;
+
   ARSessionManager(int id, this.buildContext, this.planeDetectionConfig,
       {this.debug = false}) {
     _channel = MethodChannel('arsession_$id');
@@ -53,7 +58,7 @@ class ARSessionManager {
   Future<Matrix4?> getCameraPose() async {
     try {
       final serializedCameraPose =
-      await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
+          await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
       return MatrixConverter().fromJson(serializedCameraPose!);
     } catch (e) {
       print('Error caught: ' + e.toString());
@@ -68,7 +73,7 @@ class ARSessionManager {
         throw Exception("Anchor can not be resolved. Anchor name is empty.");
       }
       final serializedCameraPose =
-      await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
+          await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
         "anchorId": anchor.name,
       });
       return MatrixConverter().fromJson(serializedCameraPose!);
@@ -158,6 +163,14 @@ class ARSessionManager {
             final arguments = call.arguments as Map<dynamic, dynamic>;
             final success = arguments['success'] as bool? ?? true;
             onImageTrackingConfigured!(success);
+          }
+          break;
+        // Route the plane count callback
+        case 'onPlanesUpdated':
+          if (onPlanesUpdated != null) {
+            final arguments = call.arguments as Map<dynamic, dynamic>;
+            final count = arguments['count'] as int;
+            onPlanesUpdated!(count);
           }
           break;
         case 'dispose':
@@ -285,7 +298,8 @@ class ARSessionManager {
   /// Returns true if successful, false if unsupported or failed.
   Future<bool> toggleFlashlight({required bool state}) async {
     try {
-      final bool? success = await _channel.invokeMethod<bool>('toggleFlashlight', {
+      final bool? success =
+          await _channel.invokeMethod<bool>('toggleFlashlight', {
         'state': state,
       });
       return success ?? false;
@@ -302,7 +316,7 @@ class ARSessionManager {
         action: SnackBarAction(
             label: 'HIDE',
             onPressed:
-            ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
+                ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
   }
 
   /// Dispose the AR view on the platforms to pause the scenes and disconnect the platform handlers.

@@ -10,7 +10,8 @@ class FlashlightExampleWidget extends StatefulWidget {
   const FlashlightExampleWidget({Key? key}) : super(key: key);
 
   @override
-  _FlashlightExampleWidgetState createState() => _FlashlightExampleWidgetState();
+  _FlashlightExampleWidgetState createState() =>
+      _FlashlightExampleWidgetState();
 }
 
 class _FlashlightExampleWidgetState extends State<FlashlightExampleWidget> {
@@ -66,10 +67,10 @@ class _FlashlightExampleWidgetState extends State<FlashlightExampleWidget> {
     this.arObjectManager = arObjectManager;
 
     this.arSessionManager!.onInitialize(
-      showFeaturePoints: false,
-      showPlanes: true,
-      showWorldOrigin: true,
-    );
+          showFeaturePoints: false,
+          showPlanes: true,
+          showWorldOrigin: true,
+        );
     this.arObjectManager!.onInitialize();
   }
 
@@ -85,7 +86,8 @@ class _FlashlightExampleWidgetState extends State<FlashlightExampleWidget> {
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Flashlight is unavailable on this device.')),
+          const SnackBar(
+              content: Text('Flashlight is unavailable on this device.')),
         );
       }
     }

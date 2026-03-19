@@ -99,6 +99,7 @@ internal class AndroidARView(
     private var lastTrackingState: TrackingState? = null
     private var lastTrackingFailureReason: TrackingFailureReason? = null
 
+    private var lastPlaneCount = 0
     private var worldOriginAnchor: Anchor? = null
     private var lastWorldOriginMatrix: FloatArray? = null
     private var stableTrackingFrames = 0
@@ -702,6 +703,21 @@ internal class AndroidARView(
 
     private fun onFrame(frameTimeNanos: Long) {
         val frame = currentFrame ?: return
+        val planes = session?.getAllTrackables(Plane::class.java) ?: emptyList()
+
+        var activePlanes = 0
+        for (plane in planes) {
+            if (plane.trackingState == TrackingState.TRACKING) {
+                activePlanes++
+            }
+        }
+
+        if (activePlanes != lastPlaneCount) {
+            lastPlaneCount = activePlanes
+            activity.runOnUiThread {
+                sessionManagerChannel.invokeMethod("onPlanesUpdated", mapOf("count" to activePlanes))
+            }
+        }
 
         // hide instructions view if no longer required
         if (showAnimatedGuide){

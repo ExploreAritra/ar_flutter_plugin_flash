@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.6
+
+- **New Feature:** Added `onPlanesUpdated` native callback to instantly track the number of active AR planes (ARCore/ARKit) directly from the native render loop. This removes the need for camera-pitch heuristics and instantly alerts the UI when a horizontal or vertical surface is found!
+
 ## 1.1.5
 
 - **New Feature:** Added `updateVisibilityOptions` to dynamically toggle debug visualizations (`showFeaturePoints`, `showPlanes`, `showWorldOrigin`) on the fly without needing to re-initialize the AR session. This is critical for capturing clean, artifact-free snapshots.
